@@ -1,11 +1,10 @@
 //! Main Censorship module
-use std::collections::HashSet;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rustrict::CensorStr;
 
-#[cfg(wasm)]
+#[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
 
 static LINK_REGEX: Lazy<Regex> = Lazy::new(|| {
@@ -19,7 +18,8 @@ static EMAIL_REGEX: Lazy<Regex> = Lazy::new(|| {
 });
 
 /// Types to add additional Censor Methods
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 pub enum CensorTypes {
     /// E.g. <https://example.net>
     Link,
@@ -31,20 +31,64 @@ pub enum CensorTypes {
 
 /// Response struct containing info about censor
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 pub struct Censored {
-    pub original: String,
-    pub censored: String,
-    pub valid: bool,
+    original: String,
+    censored: String,
+    valid: bool,
 }
 
-#[cfg(wasm)]
+#[cfg(feature = "wasm")]
+pub trait Printable {
+    fn debug_str(&self) -> String;
+}
+
+#[cfg(feature = "wasm")]
+impl Printable for Censored {
+    fn debug_str(&self) -> String {
+        format!("Censored {{ original: {}, censored: {}, valid: {} }}", self.original, self.censored, self.valid)
+    }
+}
+
+#[cfg(feature = "wasm")]
 #[wasm_bindgen]
-pub fn censor(sentence: String, types: HashSet<CensorTypes>) {
-    censor(sentence, types);
+impl Censored {
+    #[wasm_bindgen(js_name = debug)]
+    pub fn wasm_debug(&self) -> String {
+        self.debug_str()
+    }
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen]
+impl Censored {
+    #[wasm_bindgen(getter)]
+    pub fn original(&self) -> String {
+        self.original.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn censored(&self) -> String {
+        self.censored.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn valid(&self) -> bool {
+        self.valid
+    }
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "censor")]
+pub fn censor_w(sentence: String, types: Box<[CensorTypes]>) -> Censored {
+    censor(sentence, types)
 }
 
 /// Main censor function
-pub fn censor(sentence: String, types: HashSet<CensorTypes>) -> Censored {
+pub fn censor(sentence: String, types: Box<[CensorTypes]>) -> Censored {
+    let mut types = types.into_vec();
+    types.sort();
+    types.dedup();
     let mut custom = sentence.clone();
 
     for typ in types {
@@ -97,7 +141,7 @@ mod tests {
     #[test]
     fn censor_word() {
         let sentence = String::from("fuck world");
-        let censored = censor(sentence, HashSet::new());
+        let censored = censor(sentence, Box::new([]));
         assert_eq!(
             censored,
             Censored {
@@ -111,7 +155,7 @@ mod tests {
     #[test]
     fn utf8_chars() {
         let sentence = String::from("fuck ąćęłńśóźżäöüß fuck");
-        let censored = censor(sentence, HashSet::new());
+        let censored = censor(sentence, Box::new([]));
         assert_eq!(
             censored,
             Censored {
@@ -125,7 +169,7 @@ mod tests {
     #[test]
     fn link_regex_censor() {
         let sentence = String::from("go to this website: https://example.net/");
-        let censored = censor(sentence, HashSet::from([CensorTypes::Link]));
+        let censored = censor(sentence, Box::new([CensorTypes::Link]));
         assert_eq!(
             censored,
             Censored {
@@ -139,7 +183,7 @@ mod tests {
     #[test]
     fn ip_regex_censor() {
         let sentence = String::from("ip leak 127.0.0.1");
-        let censored = censor(sentence, HashSet::from([CensorTypes::IP]));
+        let censored = censor(sentence, Box::new([CensorTypes::IP]));
         assert_eq!(
             censored,
             Censored {
@@ -153,7 +197,7 @@ mod tests {
     #[test]
     fn email_regex_censor() {
         let sentence = String::from("email leak example@example.net");
-        let censored = censor(sentence, HashSet::from([CensorTypes::Email]));
+        let censored = censor(sentence, Box::new([CensorTypes::Email]));
         assert_eq!(
             censored,
             Censored {

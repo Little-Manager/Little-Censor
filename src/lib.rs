@@ -4,10 +4,54 @@ pub mod censor;
 pub mod error;
 pub use rustrict::Type;
 
-#[cfg(wasm)]
+#[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use error::Error;
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "Type")]
+#[derive(Default)]
+pub enum JsType {
+    Profane,
+    Offensive,
+    Sexual,
+    Mean,
+    Evasive,
+    Spam,
+    Safe,
+    Mild,
+    Moderate,
+    Severe,
+    MildOrHigher,
+    ModerateOrHigher,
+    #[default]
+    Inappropriate,
+    Any,
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen]
+impl JsType {
+    fn into(self) -> Type {
+        match self {
+            Self::Profane => Type::PROFANE,
+            Self::Offensive => Type::OFFENSIVE,
+            Self::Sexual => Type::SEXUAL,
+            Self::Mean => Type::MEAN,
+            Self::Evasive => Type::EVASIVE,
+            Self::Spam => Type::SPAM,
+            Self::Safe => Type::SAFE,
+            Self::Mild => Type::MILD,
+            Self::Moderate => Type::MODERATE,
+            Self::Severe => Type::SEVERE,
+            Self::MildOrHigher => Type::MILD_OR_HIGHER,
+            Self::ModerateOrHigher => Type::MODERATE_OR_HIGHER,
+            Self::Inappropriate => Type::INAPPROPRIATE,
+            Self::Any => Type::ANY,
+        }
+    }
+}
 
 /// A struct representing a vulgar word with its associated type.
 ///
@@ -22,11 +66,32 @@ use error::Error;
 /// assert_eq!(vulgar_word.word_type, Type::INAPPROPRIATE);
 /// ```
 #[derive(Default, Debug, PartialEq, Eq)]
+#[cfg(feature = "wasm")]
+#[wasm_bindgen]
+pub struct Vulgar {
+    word: String,
+    word_type: Type,
+}
+
+#[derive(Default, Debug, PartialEq, Eq)]
+#[cfg(not(feature = "wasm"))]
 pub struct Vulgar {
     pub word: String,
     pub word_type: Type,
 }
 
+#[cfg(feature = "wasm")]
+#[wasm_bindgen]
+impl Vulgar {
+    pub fn new(word: String, word_type: Option<JsType>) -> Self {
+        Self {
+            word,
+            word_type: word_type.unwrap_or_default().into(),
+        }
+    }
+}
+
+#[cfg(not(feature = "wasm"))]
 impl Vulgar {
     pub fn new(word: String, word_type: Option<Type>) -> Self {
         Self {
@@ -75,10 +140,10 @@ pub fn add_words(vulgars: Vec<Vulgar>) -> Result<(), Error> {
     Ok(())
 }
 
-#[cfg(wasm)]
-#[wasm_bindgen]
-pub fn add_words(vulgars: Vec<Vulgar>) {
-    add_words(vulgars);
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "add_words")]
+pub fn add_words_w(vulgars: Box<[Vulgar]>) {
+    add_words(vulgars.into_vec()).unwrap();
 }
 
 #[cfg(test)]
