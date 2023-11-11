@@ -4,6 +4,9 @@ pub mod censor;
 pub mod error;
 pub use rustrict::Type;
 
+#[cfg(wasm)]
+use wasm_bindgen::prelude::wasm_bindgen;
+
 use error::Error;
 
 /// A struct representing a vulgar word with its associated type.
@@ -70,6 +73,12 @@ pub fn add_words(vulgars: Vec<Vulgar>) -> Result<(), Error> {
         }
     }
     Ok(())
+}
+
+#[cfg(wasm)]
+#[wasm_bindgen]
+pub fn add_words(vulgars: Vec<Vulgar>) {
+    add_words(vulgars);
 }
 
 #[cfg(test)]

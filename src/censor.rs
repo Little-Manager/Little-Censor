@@ -5,6 +5,9 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustrict::CensorStr;
 
+#[cfg(wasm)]
+use wasm_bindgen::prelude::wasm_bindgen;
+
 static LINK_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()!@:%_\+.~#?&\/\/=]*)"#).expect("Failed to create regex")
 });
@@ -29,9 +32,15 @@ pub enum CensorTypes {
 /// Response struct containing info about censor
 #[derive(Debug, PartialEq, Eq)]
 pub struct Censored {
-    original: String,
-    censored: String,
-    valid: bool,
+    pub original: String,
+    pub censored: String,
+    pub valid: bool,
+}
+
+#[cfg(wasm)]
+#[wasm_bindgen]
+pub fn censor(sentence: String, types: HashSet<CensorTypes>) {
+    censor(sentence, types);
 }
 
 /// Main censor function
