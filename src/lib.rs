@@ -6,9 +6,12 @@ pub use rustrict::Type;
 
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
+#[cfg(feature = "wasm")]
+use wasm_bindgen::JsError;
 
-use error::Error;
+pub use error::Error;
 
+/// Type of the vulgar word
 #[cfg(feature = "wasm")]
 #[wasm_bindgen(js_name = "Type")]
 #[derive(Default)]
@@ -57,14 +60,7 @@ impl JsType {
 ///
 /// # Examples
 ///
-/// ```
-/// use little_censor::{Vulgar, Type};
-///
-/// let vulgar_word = Vulgar::new(String::from("VulgarWord"), Some(Type::INAPPROPRIATE));
-///
-/// assert_eq!(vulgar_word.word, "VulgarWord");
-/// assert_eq!(vulgar_word.word_type, Type::INAPPROPRIATE);
-/// ```
+/// new Vulgar("VulgarWord", Type.Inappropriate);
 #[derive(Default, Debug, PartialEq, Eq)]
 #[cfg(feature = "wasm")]
 #[wasm_bindgen]
@@ -73,6 +69,17 @@ pub struct Vulgar {
     word_type: Type,
 }
 
+/// A struct representing a vulgar word with its associated type.
+///
+/// # Examples
+///
+/// ```
+/// use little_censor::{Vulgar, Type};
+///
+/// let vulgar_word = Vulgar::new(String::from("VulgarWord"), Some(Type::INAPPROPRIATE));
+///
+/// assert_eq!(vulgar_word, Vulgar { word: "VulgarWord".to_owned(), word_type: Type::INAPPROPRIATE });
+/// ```
 #[derive(Default, Debug, PartialEq, Eq)]
 #[cfg(not(feature = "wasm"))]
 pub struct Vulgar {
@@ -83,6 +90,7 @@ pub struct Vulgar {
 #[cfg(feature = "wasm")]
 #[wasm_bindgen]
 impl Vulgar {
+    #[wasm_bindgen(constructor)]
     pub fn new(word: String, word_type: Option<JsType>) -> Self {
         Self {
             word,
@@ -140,10 +148,29 @@ pub fn add_words(vulgars: Vec<Vulgar>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Adds a collection of vulgar words to the Trie.
+///
+/// This function takes a vector of `Vulgar` instances and adds each word to the Trie
+/// data structure with its corresponding word type.
+///
+/// # Arguments
+///
+/// * `vulgars` - A vector of `Vulgar` instances containing words and their types.
+///
+/// # Errors
+///
+/// Returns an Error if any of the following conditions are met:
+///
+/// * The word in any `Vulgar` instance is empty, resulting in an `Error::EmptyWord`.
+///
+/// # Examples
+///
+/// add_words([new Vulgar("moron", Type.Inappropriate)]);
 #[cfg(feature = "wasm")]
 #[wasm_bindgen(js_name = "add_words")]
-pub fn add_words_w(vulgars: Box<[Vulgar]>) {
-    add_words(vulgars.into_vec()).unwrap();
+pub fn add_words_w(vulgars: Box<[Vulgar]>) -> Result<(), JsError> {
+    add_words(vulgars.into_vec())?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -183,6 +210,12 @@ mod tests {
 
     #[test]
     fn add_words_to_dict() {
+        #[cfg(feature = "wasm")]
+        let words = vec![
+            Vulgar::new(String::from("bad_word1"), Some(JsType::Sexual)),
+            Vulgar::new(String::from("bad_word2"), None),
+        ];
+        #[cfg(not(feature = "wasm"))]
         let words = vec![
             Vulgar::new(String::from("bad_word1"), Some(Type::SEXUAL)),
             Vulgar::new(String::from("bad_word2"), None),

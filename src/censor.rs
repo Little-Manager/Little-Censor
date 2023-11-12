@@ -6,6 +6,10 @@ use rustrict::CensorStr;
 
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
+#[cfg(feature = "wasm")]
+use wasm_bindgen::JsError;
+
+use crate::error::Error;
 
 static LINK_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()!@:%_\+.~#?&\/\/=]*)"#).expect("Failed to create regex")
@@ -27,6 +31,8 @@ pub enum CensorTypes {
     IP,
     /// E.g. example@example.net
     Email,
+    /// E.g. (\w+)
+    Custom,
 }
 
 /// Response struct containing info about censor
@@ -46,7 +52,10 @@ pub trait Printable {
 #[cfg(feature = "wasm")]
 impl Printable for Censored {
     fn debug_str(&self) -> String {
-        format!("Censored {{ original: {}, censored: {}, valid: {} }}", self.original, self.censored, self.valid)
+        format!(
+            "Censored {{ original: {}, censored: {}, valid: {} }}",
+            self.original, self.censored, self.valid
+        )
     }
 }
 
@@ -78,14 +87,64 @@ impl Censored {
     }
 }
 
+/// Censors given string
+///
+/// # Arguments
+///
+/// * `sentence` - Sentence to be censored
+/// * `types` - Additional types of censoring
+/// * `arg` - Additional argument for censoring
+///
+/// # Errors
+///
+/// Returns an Error variant if any of the following conditions are met:
+///
+/// * If argument was't provided when it was needed `Error::NoArgs`.
+/// * When invalid regex was passed `Error::Regex`.
+///
+/// # Examples
+///
+/// let sentence = "Some sentence"
+/// let censored = censor(sentence, [CensorTypes.Custom], "(\\w+)");
 #[cfg(feature = "wasm")]
 #[wasm_bindgen(js_name = "censor")]
-pub fn censor_w(sentence: String, types: Box<[CensorTypes]>) -> Censored {
-    censor(sentence, types)
+pub fn censor_w(
+    sentence: String,
+    types: Box<[CensorTypes]>,
+    arg: Option<String>,
+) -> Result<Censored, JsError> {
+    let res = censor(sentence, types, arg)?;
+    Ok(res)
 }
 
-/// Main censor function
-pub fn censor(sentence: String, types: Box<[CensorTypes]>) -> Censored {
+/// Censors given string
+///
+/// # Arguments
+///
+/// * `sentence` - Sentence to be censored
+/// * `types` - Additional types of censoring
+/// * `arg` - Additional argument for censoring
+///
+/// # Errors
+///
+/// Returns an `Err` variant if any of the following conditions are met:
+///
+/// * If argument was't provided when it was needed `Error::NoArgs`.
+/// * When invalid regex was passed `Error::Regex`.
+///
+/// # Examples
+///
+/// ```
+/// use little_censor::censor::{CensorTypes, censor};
+///
+/// let sentence = String::from("Some sentence");
+/// let censored = censor(sentence, Box::new([CensorTypes::Custom]), Some(r"(\w+)".to_owned()));
+/// ```
+pub fn censor(
+    sentence: String,
+    types: Box<[CensorTypes]>,
+    arg: Option<String>,
+) -> Result<Censored, Error> {
     let mut types = types.into_vec();
     types.sort();
     types.dedup();
@@ -96,17 +155,21 @@ pub fn censor(sentence: String, types: Box<[CensorTypes]>) -> Censored {
             CensorTypes::Link => regex_censor(&mut custom, LINK_REGEX.clone()),
             CensorTypes::IP => regex_censor(&mut custom, IP_REGEX.clone()),
             CensorTypes::Email => regex_censor(&mut custom, EMAIL_REGEX.clone()),
+            CensorTypes::Custom => {
+                let regex = Regex::new(arg.as_ref().ok_or(Error::NoArgs)?)?;
+                regex_censor(&mut custom, regex);
+            }
         }
     }
 
     let censored = custom.censor();
     let censored = fix_sentence(custom, censored);
 
-    Censored {
+    Ok(Censored {
         original: sentence.clone(),
         censored: censored.clone(),
         valid: sentence == censored,
-    }
+    })
 }
 
 /// Censor by given regex pattern
@@ -141,9 +204,9 @@ mod tests {
     #[test]
     fn censor_word() {
         let sentence = String::from("fuck world");
-        let censored = censor(sentence, Box::new([]));
+        let censored = censor(sentence, Box::new([]), None);
         assert_eq!(
-            censored,
+            censored.unwrap(),
             Censored {
                 original: "fuck world".to_owned(),
                 censored: "f*** world".to_owned(),
@@ -155,9 +218,9 @@ mod tests {
     #[test]
     fn utf8_chars() {
         let sentence = String::from("fuck ąćęłńśóźżäöüß fuck");
-        let censored = censor(sentence, Box::new([]));
+        let censored = censor(sentence, Box::new([]), None);
         assert_eq!(
-            censored,
+            censored.unwrap(),
             Censored {
                 original: "fuck ąćęłńśóźżäöüß fuck".to_owned(),
                 censored: "f*** ąćęłńśóźżäöüß f***".to_owned(),
@@ -169,9 +232,9 @@ mod tests {
     #[test]
     fn link_regex_censor() {
         let sentence = String::from("go to this website: https://example.net/");
-        let censored = censor(sentence, Box::new([CensorTypes::Link]));
+        let censored = censor(sentence, Box::new([CensorTypes::Link]), None);
         assert_eq!(
-            censored,
+            censored.unwrap(),
             Censored {
                 original: "go to this website: https://example.net/".to_owned(),
                 censored: "go to this website: ********************".to_owned(),
@@ -183,9 +246,9 @@ mod tests {
     #[test]
     fn ip_regex_censor() {
         let sentence = String::from("ip leak 127.0.0.1");
-        let censored = censor(sentence, Box::new([CensorTypes::IP]));
+        let censored = censor(sentence, Box::new([CensorTypes::IP]), None);
         assert_eq!(
-            censored,
+            censored.unwrap(),
             Censored {
                 original: "ip leak 127.0.0.1".to_owned(),
                 censored: "ip leak *********".to_owned(),
@@ -197,9 +260,9 @@ mod tests {
     #[test]
     fn email_regex_censor() {
         let sentence = String::from("email leak example@example.net");
-        let censored = censor(sentence, Box::new([CensorTypes::Email]));
+        let censored = censor(sentence, Box::new([CensorTypes::Email]), None);
         assert_eq!(
-            censored,
+            censored.unwrap(),
             Censored {
                 original: "email leak example@example.net".to_owned(),
                 censored: "email leak *******************".to_owned(),
